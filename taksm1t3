@@ -1,0 +1,45 @@
+const int pirPin1 = 2;   // PIR sensor 1 input pin
+const int pirPin2 = 3;   // PIR sensor 2 input pin
+const int ledPin = 4;    // LED output pin
+const int buzzerPin = 5; // Buzzer output pin
+
+volatile bool motionDetected1 = false;
+volatile bool motionDetected2 = false;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(pirPin1, INPUT);
+  pinMode(pirPin2, INPUT);
+  pinMode(ledPin, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+
+  attachInterrupt(digitalPinToInterrupt(pirPin1), motionInterrupt1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pirPin2), motionInterrupt2, CHANGE);
+}
+
+void loop() {
+  if (motionDetected1) {
+    Serial.println("Motion Detected on Sensor 1!");
+    digitalWrite(ledPin, HIGH);   // Turn on the LED
+    motionDetected1 = false; // Reset motion flag
+  } else {
+    digitalWrite(ledPin, LOW);   // Turn off the LED
+  }
+
+  if (motionDetected2) {
+    Serial.println("Motion Detected on Sensor 2!");
+    tone(buzzerPin, 1000);   // Turn on the buzzer at 1000 Hz
+    delay(1000);   // Buzzer on for 1 second
+    noTone(buzzerPin);   // Turn off the buzzer
+    motionDetected2 = false; // Reset motion flag
+  }
+}
+
+void motionInterrupt1() {
+  motionDetected1 = true;
+}
+
+void motionInterrupt2() {
+  motionDetected2 = true;
+}
