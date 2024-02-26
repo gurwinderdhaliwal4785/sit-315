@@ -1,85 +1,98 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
-
-const int pirPin1 = 2;   // PIR sensor 1 input pin
-const int pirPin2 = 3;   // PIR sensor 2 input pin
-const int ledPin = 4;    // LED output pin
-const int buzzerPin = 5; // Buzzer output pin
-
-volatile bool motionDetected1 = false;
-volatile bool motionDetected2 = false;
-
-// Timer0 interrupt variables
-const int timer0Interval = 1000; // Interval for Timer0 interrupt in milliseconds
-volatile unsigned long timer0Millis = 0;
-
-// Timer1 interrupt variables
-const int timer1Interval = 1000; // Interval for Timer1 interrupt in milliseconds
-volatile bool timer1Flag = false;
-
+volatile bool motionDetected = false;
+volatile bool PIRstate = false;
+const int pirPin = 6;
+const int ledPin2 = 2;
+const int ledPin3 = 3;
+const int ledPin4 = 4;
+const int buzzerPin = 8;
+const int buttonPin = 7;
+const int newLedPin = 11;
+const int motionThreshold = 1;
+const int motionCheckDelay = 500;
+const int soilMoisturePin = 9;
+int timer1_compare_match;
+int celsius = 0;
+int baselineTemp = 40;
+unsigned long previousMillis = 0;
+unsigned long lastMotionCheck = 0;
+unsigned long lastBlinkMillis = 0;
+bool blinkLed = false;
+const long interval = 2000;
 void setup() {
-  Serial.begin(9600);
-
-  pinMode(pirPin1, INPUT);
-  pinMode(pirPin2, INPUT);
-  pinMode(ledPin, OUTPUT);
-  pinMode(buzzerPin, OUTPUT);
-
-  // Enable Pin Change Interrupts for the pins of interest
-  PCICR |= (1 << PCIE2); // Enable PCINT[23:16] interrupts
-  PCMSK2 |= (1 << PCINT18) | (1 << PCINT19); // Set pin change interrupt mask for pins 2 and 3
-
-  // Configure Timer0 for interrupt
-  cli(); // Disable interrupts
-  TCCR0A = 0; // Set Timer0 control register A to 0
-  TCCR0B = 0; // Set Timer0 control register B to 0
-  TCNT0 = 0; // Initialize counter value to 0
-  OCR0A = 249; // Set Output Compare Register (OCR) for desired timer interval
-  TCCR0B |= (1 << WGM01); // Enable CTC mode
-  TCCR0B |= (1 << CS02) | (1 << CS00); // Set prescaler to 1024 and start the timer
-  TIMSK0 |= (1 << OCIE0A); // Enable Timer0 compare match A interrupt
-
-  // Configure Timer1 for interrupt
-  TCCR1A = 0; // Set Timer1 control register A to 0
-  TCCR1B = 0; // Set Timer1 control register B to 0
-  TCNT1 = 0; // Initialize counter value to 0
-  OCR1A = 15624; // Set Output Compare Register (OCR) for desired timer interval
-  TCCR1B |= (1 << WGM12); // Enable CTC mode
-  TCCR1B |= (1 << CS12) | (1 << CS10); // Set prescaler to 1024 and start the timer
-  TIMSK1 |= (1 << OCIE1A); // Enable Timer1 compare match A interrupt
-  sei(); // Enable interrupts
+pinMode(A0, INPUT);
+pinMode(pirPin, INPUT);
+pinMode(ledPin2, OUTPUT);
+pinMode(ledPin3, OUTPUT);
+pinMode(ledPin4, OUTPUT);
+pinMode(buzzerPin, OUTPUT);
+pinMode(newLedPin, OUTPUT);
+pinMode(buttonPin, INPUT_PULLUP);
+DDRB&=~(1<<DDD6);
+pinMode(buzzerPin, OUTPUT);
+pinMode(A0, INPUT);
+Serial.begin(9600);
+PCMSK2 |= (1 << PCINT22);
+PCICR |= (1 << PCIE2);
+noInterrupts();
+TCCR1A = 0;
+TCCR1B = 0;
+timer1_compare_match = 31249;
+TCNT1 = timer1_compare_match;
+TCCR1B |= (1 << CS12);
+TIMSK1 |= (1 << OCIE1A);
+TCCR0A = 0x02;
+TCCR0B = 0x05;
+OCR0A = 156;
+TIMSK0 |= (1 << OCIE0A);
+interrupts();
 }
-
-void loop() {
-  // Your main code here
+ISR(PCINT0_vect) {
 }
-
-// Pin Change Interrupt Service Routine (ISR) for pins 2 and 3
-ISR(PCINT2_vect) {
-  // Check if motion detected on PIR sensor 1
-  if (digitalRead(pirPin1) == HIGH) {
-    motionDetected1 = true;
-    Serial.println("Motion detected on sensor 1");
-  }
-  
-  // Check if motion detected on PIR sensor 2
-  if (digitalRead(pirPin2) == HIGH) {
-    motionDetected2 = true;
-    Serial.println("Motion detected on sensor 2");
-  }
-  
-  
-  
-}
-
-// Timer0 compare match A interrupt service routine
-ISR(TIMER0_COMPA_vect) {
-  timer0Millis += timer0Interval; // Increment millis() equivalent
-  Serial.println("Timer0 interrupt");
-}
-
-// Timer1 compare match A interrupt service routine
 ISR(TIMER1_COMPA_vect) {
-  timer1Flag = true; // Set Timer1 flag
-  Serial.println("Timer1 interrupt");
+}
+ISR(TIMER0_COMPA_vect) {
+}
+ISR(PCINT2_vect) {
+if (digitalRead(pirPin) == HIGH) {
+Serial.println("MOTION DETECTED!");
+digitalWrite(buzzerPin, HIGH);
+}
+else digitalWrite(buzzerPin, LOW);
+}
+void loop() {
+unsigned long currentMillis = millis();
+celsius = map(((analogRead(A0) - 20) * 3.04), 0, 1023, -40, 125);
+Serial.print("CURRENT TEMP: ");
+Serial.print(celsius);
+delay(1000);
+controlLEDs();
+int soilMoistureStatus = digitalRead(soilMoisturePin);
+Serial.print("Soil Moisture Value ");
+if (soilMoistureStatus == HIGH) {
+Serial.println("Soil=moist.");
+digitalWrite(newLedPin, HIGH);
+} else {
+Serial.println("Soil=dry.");
+digitalWrite(newLedPin, LOW);
+} delay(1000);
+}
+void controlLEDs() {
+digitalWrite(ledPin2, LOW);
+digitalWrite(ledPin3, LOW);
+digitalWrite(ledPin4, LOW);
+if (celsius >= baselineTemp && celsius < baselineTemp + 10) {
+digitalWrite(ledPin2, HIGH);
+} else if (celsius >= baselineTemp + 10 && celsius < baselineTemp + 20) {
+digitalWrite(ledPin2, HIGH);
+digitalWrite(ledPin3, HIGH);
+} else if (celsius >= baselineTemp + 20) {
+digitalWrite(ledPin2, HIGH);
+digitalWrite(ledPin3, HIGH);
+digitalWrite(ledPin4, HIGH);
+}
+}
+void toggleLED() {
+digitalWrite(ledPin4, !digitalRead(ledPin4));
 }
